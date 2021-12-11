@@ -102,7 +102,7 @@ class GPT(nn.Module):
         logits = self.fc(x)
         return logits
 
-def cross_entropy_loss(logits, targets):
+def loss_fn(logits, targets):
     # flatten logits and target and compute cross entropy
     loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), targets.view(-1))
     return loss
