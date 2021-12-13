@@ -1,9 +1,10 @@
+import json
+import os
 from typing import List
+
 from tokenizers import Tokenizer
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
-import json
 
-import os
 
 class Tokenizer:
 

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+
 class GPTConfig:
 
     embedding_dropout = 0.1

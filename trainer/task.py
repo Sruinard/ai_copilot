@@ -1,14 +1,14 @@
 import json
+import math
 import os
-from torch.utils import data
-from trainer import model
+
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from trainer.model import loss_fn
-import math
-import numpy as np
 from tqdm import tqdm
-from tokenizers import Tokenizer
+
+from trainer.model import loss_fn
+
 
 class TextToCodeDataset(Dataset):
 

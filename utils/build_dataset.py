@@ -1,8 +1,10 @@
-import os
 import gzip
 import json
+import os
 from typing import List
+
 from trainer.constants import SpecialTokens
+
 
 class Dataset:
 

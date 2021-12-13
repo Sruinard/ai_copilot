@@ -1,6 +1,8 @@
 import os
+
 import pytest
 from utils.build_dataset import Dataset
+
 
 @pytest.mark.usefixtures("vocab_data_in_gzip")
 def test_build_dataset(raw_files, dataset_dest):
