@@ -1,11 +1,12 @@
 from torch.utils import data
 from trainer import model
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from trainer.model import loss_fn
 import math
 import numpy as np
-
+from tqdm import tqdm
+from tokenizers import Tokenizer
 
 
 class TrainerConfig:
@@ -23,6 +24,10 @@ class TrainerConfig:
     ckpt_path = None
     num_workers = 0 # for DataLoader
 
+    def __init__(self, **kwargs) -> None:
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
 
 class Trainer:
 
@@ -32,20 +37,22 @@ class Trainer:
         self.train_dataset = train_dataset
         self.validation_dataset = validation_dataset
         self.config = config
+
+        self.epoch = 0
         self.best_loss = float('inf')
         self.tokens = 0 # counter used for learning rate decay
 
-        device = 'cpu'
+        self.device = 'cpu'
         if torch.cuda.is_available():
             self.device = torch.cuda.current_device()
-            self.model = torch.nn.DataParallel(self.model).to(device)
+            self.model = torch.nn.DataParallel(self.model).to(self.device)
 
     def save_model(self):
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         torch.save(raw_model.state_dict(), self.config.ckpt_path)
 
 
-    def run_epoch(self, model, optimizer=None, split='train'):
+    def run_epoch(self, model, optimizer=None, epoch=0, split='train'):
         is_train = split == 'train'
         data = self.train_dataset if is_train else self.validation_dataset
         dataloader = DataLoader(
@@ -56,8 +63,8 @@ class Trainer:
             pin_memory=True
         )
         losses = []
-
-        for X, y  in dataloader:
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader)) if is_train else enumerate(dataloader)
+        for it, (X, y)  in pbar:
             # Backpropagation
             optimizer.zero_grad()
 
@@ -78,7 +85,8 @@ class Trainer:
                 optimizer.step()
 
                 if self.config.lr_decay:
-                    self.decay_learning_rate(y, optimizer)
+                   lr =  self.decay_learning_rate(y, optimizer)
+                pbar.set_description(f"epoch {epoch + 1} iter {it}: train loss {loss.item():.5f}. lr {lr:e}")
 
             if not is_train:
                 test_loss = float(np.mean(losses))
@@ -100,13 +108,15 @@ class Trainer:
         else:
             lr = self.config.learning_rate
 
+        return lr
+
     def train(self):
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         optimizer = torch.optim.AdamW(raw_model.parameters(), lr=self.config.learning_rate, betas=self.config.betas)
 
-        for _ in range(self.config.max_epochs):
+        for epoch in range(self.config.max_epochs):
 
-            self.run_epoch(raw_model, optimizer, 'train')
+            self.run_epoch(raw_model, optimizer, epoch=epoch, split='train')
             if self.validation_dataset is not None:
                 validation_loss = self.run_epoch('validation')
 
@@ -115,3 +125,22 @@ class Trainer:
             if self.config.ckpt_path is not None and good_model:
                 self.best_loss = validation_loss
                 self.save_model()
+
+
+class TextToCodeDataset(Dataset):
+
+    def __init__(self, data, tokenizer: Tokenizer, sequence_length) -> None:
+        super().__init__()
+        self.data = data
+        self.tokenizer = tokenizer
+        self.sequence_length = sequence_length
+        self.tokenized_data = self.tokenizer.encode(self.data)
+
+    def __len__(self):
+        return len(self.tokenized_data) - self.sequence_length
+
+    def __getitem__(self, idx):
+        word_idx = self.tokenized_data[idx:idx + self.sequence_length + 1]
+        x = torch.tensor(word_idx[:-1], dtype=torch.long)
+        y = torch.tensor(word_idx[1:], dtype=torch.long)
+        return x, y

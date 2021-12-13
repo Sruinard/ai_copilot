@@ -9,10 +9,13 @@ class GPTConfig:
     attention_dropout = 0.1
 
 class GPT2Config(GPTConfig):
-    embedding_size = 768
-    n_heads = 12
-    n_layers = 12
-    max_sequence_length = 256
+    def __init__(self, vocab_size, embedding_size=768, n_heads=12, n_layers=12, max_sequence_length=256) -> None:
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embedding_size = embedding_size
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.max_sequence_length = max_sequence_length
 
 class CausalSelfAttention(nn.Module):
 
@@ -29,7 +32,7 @@ class CausalSelfAttention(nn.Module):
         self.fc = nn.Linear(config.embedding_size, config.embedding_size)
 
         # triangular lower filled with ones
-        self.causal_mask = torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length)).view(1, 1, config.embedding_size, config.embedding_size)
+        self.causal_mask = torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length)).view(1, 1, config.max_sequence_length, config.max_sequence_length)
 
         self.n_heads = config.n_heads
 
@@ -41,7 +44,7 @@ class CausalSelfAttention(nn.Module):
         keys = self.keys(x).view(N, sequence_length, self.n_heads, embed_size // self.n_heads)
         queries = self.queries(x).view(N, sequence_length, self.n_heads, embed_size // self.n_heads)
 
-        attention = torch.einsum('nqhd,nkhd->nhqk', [queries, keys]) * ( 1 / torch.sqrt(keys.shape[0]))
+        attention = torch.einsum('nqhd,nkhd->nhqk', [queries, keys]) * ( 1 / (keys.shape[0] ** 0.5))
         attention = attention.masked_fill(self.causal_mask == 0, float('-1e20'))
         attention = F.softmax(attention, dim=-1)
         attention = self.attention_dropout(attention)
@@ -76,12 +79,12 @@ class GPT(nn.Module):
         super().__init__()
 
         self.word_embedding = nn.Embedding(config.vocab_size, config.embedding_size)
-        self.positional_embedding = nn.parameter(1, config.max_sequence_length, config.embedding_size)
+        self.positional_embedding = nn.Parameter(torch.zeros(1, config.max_sequence_length, config.embedding_size))
         self.dropout = nn.Dropout(config.embedding_dropout)
 
-        self.layers = nn.ModuleList(
-            [
-                Decoder(config) for _ in config.n_layers
+        self.layers = nn.Sequential(
+            *[
+                Decoder(config) for _ in range(config.n_layers)
             ]
         )
 
