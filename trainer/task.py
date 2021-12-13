@@ -1,3 +1,5 @@
+import json
+import os
 from torch.utils import data
 from trainer import model
 import torch
@@ -8,6 +10,30 @@ import numpy as np
 from tqdm import tqdm
 from tokenizers import Tokenizer
 
+class TextToCodeDataset(Dataset):
+
+    def __init__(self, transform_dir, sequence_length) -> None:
+        super().__init__()
+        self.data = self._load_data(transform_dir)
+        self.sequence_length = sequence_length
+
+    def __len__(self):
+        return len(self.data) - self.sequence_length
+
+    def __getitem__(self, idx):
+        word_idx = self.data[idx:idx + self.sequence_length + 1]
+        x = torch.tensor(word_idx[:-1], dtype=torch.long)
+        y = torch.tensor(word_idx[1:], dtype=torch.long)
+        return x, y
+
+    @staticmethod
+    def _load_data(transform_dir):
+        transformed_data_dir = os.path.join(transform_dir, 'transformed_data')
+        data_filename = os.listdir(transformed_data_dir)[0]
+
+        with open(os.path.join(transformed_data_dir, data_filename), 'r') as f:
+            data = json.loads(f.read())
+        return data
 
 class TrainerConfig:
     max_epochs = 10
@@ -126,21 +152,3 @@ class Trainer:
                 self.best_loss = validation_loss
                 self.save_model()
 
-
-class TextToCodeDataset(Dataset):
-
-    def __init__(self, data, tokenizer: Tokenizer, sequence_length) -> None:
-        super().__init__()
-        self.data = data
-        self.tokenizer = tokenizer
-        self.sequence_length = sequence_length
-        self.tokenized_data = self.tokenizer.encode(self.data)
-
-    def __len__(self):
-        return len(self.tokenized_data) - self.sequence_length
-
-    def __getitem__(self, idx):
-        word_idx = self.tokenized_data[idx:idx + self.sequence_length + 1]
-        x = torch.tensor(word_idx[:-1], dtype=torch.long)
-        y = torch.tensor(word_idx[1:], dtype=torch.long)
-        return x, y
