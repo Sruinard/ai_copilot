@@ -33,7 +33,9 @@ class CausalSelfAttention(nn.Module):
         self.fc = nn.Linear(config.embedding_size, config.embedding_size)
 
         # triangular lower filled with ones
-        self.causal_mask = torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length)).view(1, 1, config.max_sequence_length, config.max_sequence_length)
+        # self.causal_mask = torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length)).view(1, 1, config.max_sequence_length, config.max_sequence_length).to(device=device)
+        self.register_buffer("causal_mask",torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length)).view(1, 1, config.max_sequence_length, config.max_sequence_length))
+
 
         self.n_heads = config.n_heads
 
@@ -46,7 +48,7 @@ class CausalSelfAttention(nn.Module):
         queries = self.queries(x).view(N, sequence_length, self.n_heads, embed_size // self.n_heads)
 
         attention = torch.einsum('nqhd,nkhd->nhqk', [queries, keys]) * ( 1 / (keys.shape[0] ** 0.5))
-        attention = attention.masked_fill(self.causal_mask == 0, float('-1e20'))
+        attention = attention.masked_fill(self.causal_mask[:,:,:sequence_length, :sequence_length] == 0, float('-1e20'))
         attention = F.softmax(attention, dim=-1)
         attention = self.attention_dropout(attention)
         out = torch.einsum('nhqk,nkhd->nqhd', [attention, values]).reshape(N, sequence_length, embed_size)
@@ -82,7 +84,7 @@ class GPT(nn.Module):
         self.word_embedding = nn.Embedding(config.vocab_size, config.embedding_size)
         self.positional_embedding = nn.Parameter(torch.zeros(1, config.max_sequence_length, config.embedding_size))
         self.dropout = nn.Dropout(config.embedding_dropout)
-
+        self.max_sequence_length = config.max_sequence_length
         self.layers = nn.Sequential(
             *[
                 Decoder(config) for _ in range(config.n_layers)
@@ -92,6 +94,9 @@ class GPT(nn.Module):
         self.layer_norm = nn.LayerNorm(config.embedding_size)
         self.fc = nn.Linear(config.embedding_size, config.vocab_size, bias=False)
 
+
+    def get_max_sequence_length(self):
+        return self.max_sequence_length
 
     def forward(self, x):
         _, sequence_length = x.shape
